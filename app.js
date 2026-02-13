@@ -42,7 +42,6 @@
     runawayNoButton: true
   };
   const PHOTO_CANDIDATES = [
-    ...Array.from({ length: 10 }, (_, i) => `assets/photos/photo${String(i + 1).padStart(2, "0")}.jpg`),
     "assets/photos/photo_2026-02-13_19-23-28.jpg",
     "assets/photos/photo_2026-02-13_19-23-35.jpg",
     "assets/photos/photo_2026-02-13_19-23-39.jpg",
@@ -55,9 +54,9 @@
     "assets/photos/photo_2026-02-13_19-24-03.jpg"
   ];
   const MUSIC_CANDIDATES = [
+    "Güncel Gürsel Artıktay - uzak yol.mp3",
     "assets/music/romantic.mp3",
-    "assets/music/romantic.MP3",
-    "Güncel Gürsel Artıktay - uzak yol.mp3"
+    "assets/music/romantic.MP3"
   ];
 
   const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -88,7 +87,7 @@
     scrollY: 0,
     settings: {
       density: "med",
-      trailEnabled: !reducedMotion,
+      trailEnabled: true,
       reducedMotion
     },
     pointers: {
@@ -103,6 +102,8 @@
 
   const dom = {
     body: document.body,
+    hero: document.getElementById("hero"),
+    heroCard: document.querySelector(".hero-card"),
     heroHint: document.getElementById("heroHint"),
     heroActions: document.getElementById("heroActions"),
     yesBtn: document.getElementById("yesBtn"),
@@ -124,6 +125,7 @@
     nextPhoto: document.getElementById("nextPhoto"),
     playPhoto: document.getElementById("playPhoto"),
     finalSection: document.getElementById("final"),
+    controlDock: document.querySelector(".control-dock"),
     replayBtn: document.getElementById("replayBtn"),
     messageBtn: document.getElementById("messageBtn"),
     waBtn: document.getElementById("waBtn"),
@@ -132,6 +134,7 @@
     trailToggle: document.getElementById("trailToggle"),
     densitySelect: document.getElementById("densitySelect"),
     themeToggle: document.getElementById("themeToggle"),
+    dockSizeToggle: document.getElementById("dockSizeToggle"),
     toastRegion: document.getElementById("toastRegion"),
     modal: document.getElementById("messageModal"),
     modalPanel: document.querySelector(".modal-panel"),
@@ -495,26 +498,263 @@
     return { render };
   })();
 
+  const noButtonController = (() => {
+    const recentPositions = [];
+    let freezeUntil = 0;
+    let isInitialized = false;
+    let lastEvadeAt = 0;
+    let lastTriggerAt = 0;
+    const playfulToasts = [
+      "Oops, yine kactim 😄",
+      "Bu kalbi yakalamak zor 💘",
+      "Biraz daha hizli olman lazim 🏃",
+      "Hayir butonu saklambacta 🙈",
+      "Yaklastin ama yine kacti 💨",
+      "Beni yakalamak icin bir opucuk lazim 😘"
+    ];
+    let toastIdx = 0;
+
+    function nextPlayfulToast() {
+      const msg = playfulToasts[toastIdx % playfulToasts.length];
+      toastIdx += 1;
+      return msg;
+    }
+
+    function getArenaMetrics(btnW = 0, btnH = 0, margin = 16) {
+      const arena = dom.heroActions.getBoundingClientRect();
+      const minX = margin;
+      const minY = margin;
+      const maxX = Math.max(minX, arena.width - btnW - margin);
+      const maxY = Math.max(minY, arena.height - btnH - margin);
+
+      return {
+        arenaLeft: arena.left,
+        arenaTop: arena.top,
+        minX,
+        minY,
+        maxX,
+        maxY
+      };
+    }
+
+    function hardClampAfterMove(margin = isMobileDevice ? 12 : 16) {
+      const rect = dom.noBtn.getBoundingClientRect();
+      const arena = getArenaMetrics(rect.width, rect.height, margin);
+      let left = parseFloat(dom.noBtn.style.left || `${rect.left}`);
+      let top = parseFloat(dom.noBtn.style.top || `${rect.top}`);
+      if (!Number.isFinite(left)) left = rect.left - arena.arenaLeft;
+      if (!Number.isFinite(top)) top = rect.top - arena.arenaTop;
+
+      dom.noBtn.style.left = `${helpers.clamp(left, arena.minX, arena.maxX)}px`;
+      dom.noBtn.style.top = `${helpers.clamp(top, arena.minY, arena.maxY)}px`;
+    }
+
+    function getPointerRadius() {
+      return isMobileDevice ? 120 : 170;
+    }
+
+    function isHeroVisible() {
+      const r = dom.hero.getBoundingClientRect();
+      return r.bottom > 0 && r.top < window.innerHeight;
+    }
+
+    function isNearRecent(x, y) {
+      return recentPositions.some((p) => {
+        const dx = p.x - x;
+        const dy = p.y - y;
+        return Math.sqrt(dx * dx + dy * dy) < 52;
+      });
+    }
+
+    function pushRecent(x, y) {
+      recentPositions.push({ x, y });
+      while (recentPositions.length > 3) recentPositions.shift();
+    }
+
+    function setInitialAbsolutePosition() {
+      if (isInitialized) return;
+      const noRect = dom.noBtn.getBoundingClientRect();
+      const arenaRect = dom.heroActions.getBoundingClientRect();
+      const arena = getArenaMetrics(noRect.width, noRect.height, isMobileDevice ? 12 : 16);
+      dom.noBtn.classList.add("btn-runaway");
+      dom.noBtn.style.display = "inline-flex";
+      dom.noBtn.style.visibility = "visible";
+      dom.noBtn.style.opacity = "1";
+      dom.noBtn.style.pointerEvents = "auto";
+      dom.heroActions.style.minHeight = isMobileDevice ? "132px" : "156px";
+      dom.noBtn.style.position = "absolute";
+      dom.noBtn.style.left = `${helpers.clamp(noRect.left - arenaRect.left, arena.minX, arena.maxX)}px`;
+      dom.noBtn.style.top = `${helpers.clamp(noRect.top - arenaRect.top, arena.minY, arena.maxY)}px`;
+      dom.noBtn.style.transition = "left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 220ms ease";
+      dom.noBtn.style.zIndex = "18";
+      isInitialized = true;
+    }
+
+    function resetInitialVisibility() {
+      dom.noBtn.classList.remove("btn-runaway");
+      dom.noBtn.style.position = "relative";
+      dom.noBtn.style.left = "";
+      dom.noBtn.style.top = "";
+      dom.noBtn.style.zIndex = "";
+      dom.noBtn.style.transform = "";
+      dom.noBtn.style.display = "inline-flex";
+      dom.noBtn.style.visibility = "visible";
+      dom.noBtn.style.opacity = "1";
+      dom.noBtn.style.pointerEvents = "auto";
+    }
+
+    function candidatePosition(pointerX, pointerY) {
+      const btnRect = dom.noBtn.getBoundingClientRect();
+      const btnW = btnRect.width || 120;
+      const btnH = btnRect.height || 46;
+      const margin = isMobileDevice ? 12 : 16;
+      const arena = getArenaMetrics(btnW, btnH, margin);
+      const yesRect = dom.yesBtn.getBoundingClientRect();
+      const currentX = parseFloat(dom.noBtn.style.left || `${btnRect.left}`);
+      const currentY = parseFloat(dom.noBtn.style.top || `${btnRect.top}`);
+      const strongMinJump = isMobileDevice ? 80 : 120;
+      const cornerCandidates = [
+        { x: arena.minX, y: arena.minY },
+        { x: arena.maxX, y: arena.minY },
+        { x: arena.minX, y: arena.maxY },
+        { x: arena.maxX, y: arena.maxY },
+        { x: (arena.minX + arena.maxX) / 2, y: arena.minY },
+        { x: (arena.minX + arena.maxX) / 2, y: arena.maxY },
+        { x: arena.minX, y: (arena.minY + arena.maxY) / 2 },
+        { x: arena.maxX, y: (arena.minY + arena.maxY) / 2 }
+      ];
+
+      let chosen = null;
+      let bestFallback = null;
+      let bestFallbackScore = -Infinity;
+      for (let i = 0; i < 28; i += 1) {
+        const x = helpers.rand(arena.minX, arena.maxX);
+        const y = helpers.rand(arena.minY, arena.maxY);
+        const viewportRect = {
+          left: x,
+          top: y,
+          right: x + btnW,
+          bottom: y + btnH
+        };
+
+        const farFromPointer = Math.hypot((viewportRect.left + viewportRect.right) / 2 - pointerX, (viewportRect.top + viewportRect.bottom) / 2 - pointerY) > getPointerRadius() * 0.8;
+        const farFromYes = Math.hypot((viewportRect.left + viewportRect.right) / 2 - (yesRect.left + yesRect.width / 2), (viewportRect.top + viewportRect.bottom) / 2 - (yesRect.top + yesRect.height / 2)) > 90;
+        const notRecent = !isNearRecent(x, y);
+        const jumpDist = Math.hypot(x - currentX, y - currentY);
+        const farFromCurrent = jumpDist > strongMinJump;
+        const score = jumpDist + (farFromPointer ? 60 : 0) + (farFromYes ? 40 : 0) + (notRecent ? 20 : 0);
+
+        if (score > bestFallbackScore) {
+          bestFallbackScore = score;
+          bestFallback = { x, y };
+        }
+
+        if (farFromPointer && farFromYes && notRecent && farFromCurrent) {
+          chosen = { x, y };
+          break;
+        }
+      }
+
+      if (chosen) return chosen;
+
+      const strongCorner = cornerCandidates
+        .map((p) => ({ p, d: Math.hypot(p.x - currentX, p.y - currentY) }))
+        .sort((a, b) => b.d - a.d)
+        .find((item) => item.d > strongMinJump);
+      if (strongCorner) return strongCorner.p;
+
+      return bestFallback || {
+        x: helpers.rand(arena.minX, arena.maxX),
+        y: helpers.rand(arena.minY, arena.maxY)
+      };
+    }
+
+    function evade(pointerX, pointerY) {
+      if (!FEATURE_FLAGS.runawayNoButton) return;
+      if (Date.now() < freezeUntil) return;
+      if (!isHeroVisible()) return;
+      if (Date.now() - lastEvadeAt < 40) return;
+      lastEvadeAt = Date.now();
+
+      setInitialAbsolutePosition();
+      const pos = candidatePosition(pointerX, pointerY);
+      const btnRect = dom.noBtn.getBoundingClientRect();
+      const arena = getArenaMetrics(btnRect.width, btnRect.height, isMobileDevice ? 12 : 16);
+      const safeX = helpers.clamp(pos.x, arena.minX, arena.maxX);
+      const safeY = helpers.clamp(pos.y, arena.minY, arena.maxY);
+      pushRecent(safeX, safeY);
+      dom.noBtn.style.transform = "translateX(0)";
+      dom.noBtn.style.left = `${safeX}px`;
+      dom.noBtn.style.top = `${safeY}px`;
+      hardClampAfterMove();
+      dom.heroHint.textContent = "Emin misin? 😅";
+    }
+
+    function keepInBounds() {
+      const r = dom.noBtn.getBoundingClientRect();
+      const arenaRect = dom.heroActions.getBoundingClientRect();
+      const arena = getArenaMetrics(r.width, r.height, isMobileDevice ? 12 : 16);
+      let left = parseFloat(dom.noBtn.style.left || `${r.left - arenaRect.left}`);
+      let top = parseFloat(dom.noBtn.style.top || `${r.top - arenaRect.top}`);
+      if (!Number.isFinite(left)) left = r.left - arenaRect.left;
+      if (!Number.isFinite(top)) top = r.top - arenaRect.top;
+
+      const safeX = helpers.clamp(left, arena.minX, arena.maxX);
+      const safeY = helpers.clamp(top, arena.minY, arena.maxY);
+      dom.noBtn.style.left = `${safeX}px`;
+      dom.noBtn.style.top = `${safeY}px`;
+    }
+
+    function onEscape(event) {
+      if (event.key !== "Escape") return;
+      if (!FEATURE_FLAGS.runawayNoButton) return;
+      freezeUntil = Date.now() + 2000;
+      ui.toast("Tamam, 2 saniye mola 😌");
+    }
+
+    function onClick(event) {
+      if (Date.now() - lastTriggerAt < 220) return;
+      lastTriggerAt = Date.now();
+      event.preventDefault();
+      event.stopPropagation();
+      ui.toast(nextPlayfulToast());
+      const x = typeof event.clientX === "number" ? event.clientX : (dom.noBtn.getBoundingClientRect().left + dom.noBtn.getBoundingClientRect().width / 2);
+      const y = typeof event.clientY === "number" ? event.clientY : (dom.noBtn.getBoundingClientRect().top + dom.noBtn.getBoundingClientRect().height / 2);
+      evade(x, y);
+    }
+
+    function onPointerDown(event) {
+      if (Date.now() - lastTriggerAt < 220) return;
+      lastTriggerAt = Date.now();
+      event.preventDefault();
+      event.stopPropagation();
+      ui.toast(nextPlayfulToast());
+      const x = typeof event.clientX === "number" ? event.clientX : (dom.noBtn.getBoundingClientRect().left + dom.noBtn.getBoundingClientRect().width / 2);
+      const y = typeof event.clientY === "number" ? event.clientY : (dom.noBtn.getBoundingClientRect().top + dom.noBtn.getBoundingClientRect().height / 2);
+      evade(x, y);
+    }
+
+    function init() {
+      resetInitialVisibility();
+      dom.noBtn.addEventListener("pointerdown", onPointerDown);
+      dom.noBtn.addEventListener("touchstart", onPointerDown, { passive: false });
+      dom.noBtn.addEventListener("click", onClick);
+      window.addEventListener("resize", helpers.throttle(() => {
+        keepInBounds();
+      }, 120));
+      document.addEventListener("keydown", onEscape);
+    }
+
+    return {
+      init,
+      evade
+    };
+  })();
+
   const heroController = (() => {
     function continueFlow() {
       ui.smoothScrollTo("questions");
       questionsController.render();
-    }
-
-    function moveNoButton() {
-      if (!FEATURE_FLAGS.runawayNoButton || state.heroNoClicks >= 2 || reducedMotion) return;
-      const container = dom.heroActions.getBoundingClientRect();
-      const btn = dom.noBtn.getBoundingClientRect();
-      const xMin = 10;
-      const yMin = 0;
-      const xMax = Math.max(xMin, container.width - btn.width - 10);
-      const yMax = Math.max(yMin, 46);
-      const x = helpers.rand(xMin, xMax);
-      const y = helpers.rand(yMin, yMax);
-      dom.noBtn.classList.add("btn-runaway");
-      dom.noBtn.style.left = `${x}px`;
-      dom.noBtn.style.top = `${y}px`;
-      dom.noBtn.style.transition = "left 380ms cubic-bezier(0.2, 1, 0.2, 1), top 380ms cubic-bezier(0.2, 1, 0.2, 1)";
     }
 
     dom.yesBtn.addEventListener("click", () => {
@@ -523,18 +763,9 @@
       continueFlow();
     });
 
-    dom.noBtn.addEventListener("click", () => {
-      state.heroNoClicks += 1;
-      dom.heroHint.textContent = "Emin misin? 😅";
-
-      if (FEATURE_FLAGS.runawayNoButton && state.heroNoClicks <= 2) {
-        moveNoButton();
-        return;
-      }
-
-      ui.toast("Tamam... yine de seni cok seviyorum 💗");
-      continueFlow();
-    });
+    if (FEATURE_FLAGS.runawayNoButton) {
+      noButtonController.init();
+    }
   })();
 
   const galleryController = (() => {
@@ -727,7 +958,8 @@
         p.then(() => {
           state.audioPlaying = true;
           state.audioUnlocked = true;
-          loveButtonSystem.setLabel(dom.musicToggle, "❚❚ Muzik");
+          const compact = dom.controlDock && dom.controlDock.classList.contains("is-compact");
+          loveButtonSystem.setLabel(dom.musicToggle, compact ? "❚❚" : "❚❚ Muzik");
         }).catch(() => {
           state.audioReady = false;
           setDisabled(true);
@@ -739,7 +971,8 @@
     function pause() {
       dom.audio.pause();
       state.audioPlaying = false;
-      loveButtonSystem.setLabel(dom.musicToggle, "▶ Muzik");
+      const compact = dom.controlDock && dom.controlDock.classList.contains("is-compact");
+      loveButtonSystem.setLabel(dom.musicToggle, compact ? "▶" : "▶ Muzik");
     }
 
     function toggle() {
@@ -780,8 +1013,8 @@
     let heartTargets = [];
 
     function densityFactor() {
-      const base = state.settings.density === "low" ? 0.7 : 1;
-      return state.settings.reducedMotion ? base * 0.3 : base;
+      const base = state.settings.density === "low" ? 1.1 : 1.85;
+      return state.settings.reducedMotion ? base * 0.65 : base;
     }
 
     function makeParticle(layer) {
@@ -792,7 +1025,7 @@
         vy: helpers.rand(0.2, 0.8) * (layer + 1),
         size: helpers.rand(1.2, 3.2 + layer),
         layer,
-        alpha: helpers.rand(0.08, 0.25),
+        alpha: helpers.rand(0.14, 0.34),
         phase: Math.random() * Math.PI * 2,
         sparkle: Math.random() > 0.96,
         target: { x: width * 0.5, y: height * 0.5 },
@@ -801,8 +1034,8 @@
     }
 
     function rebuildPool() {
-      const baseCount = Math.floor((width * height) / 14000);
-      const target = Math.max(24, Math.floor(baseCount * densityFactor()));
+      const baseCount = Math.floor((width * height) / 7600);
+      const target = Math.max(56, Math.floor(baseCount * densityFactor()));
       while (particles.length < target) {
         const layer = particles.length % 3;
         particles.push(makeParticle(layer));
@@ -847,7 +1080,7 @@
       if (next === "heart") buildHeartTargets();
     }
 
-    function update(_now, dt) {
+    function update(now, dt) {
       if (state.paused) return;
       modeElapsed += dt;
       ctx.clearRect(0, 0, width, height);
@@ -857,6 +1090,30 @@
         const sway = Math.sin((p.phase += 0.008 + p.layer * 0.003) + index * 0.01) * 0.32;
 
         if (mode === "snow") {
+          if (state.pointers.active) {
+            const dx = state.pointers.x - p.x;
+            const dy = state.pointers.y - p.y;
+            const dist = Math.hypot(dx, dy);
+            const radius = isMobileDevice ? 320 : 460;
+            if (dist < radius && dist > 0.01) {
+              const influence = 1 - dist / radius;
+              const pull = (0.28 + p.layer * 0.08) * influence;
+              const swirlBase = (index % 2 === 0 ? 1 : -1) * 0.13 * influence;
+              const swirlPulse = 0.05 * Math.sin(now * 0.004 + index * 0.3);
+              const swirl = swirlBase + swirlPulse;
+              p.vx += (dx / dist) * pull + (-dy / dist) * swirl;
+              p.vy += (dy / dist) * pull + (dx / dist) * swirl;
+              // Directly nudge particle position so pointer tracking is visible.
+              const snap = state.settings.reducedMotion ? 0.006 : 0.02;
+              p.x += dx * snap * influence;
+              p.y += dy * snap * influence;
+            } else if (dist >= radius) {
+              const guide = 0.0045;
+              p.vx += Math.sign(dx) * guide;
+              p.vy += Math.sign(dy) * guide * 0.75;
+            }
+          }
+
           p.x += (p.vx + sway * 0.1) * areaScale;
           p.y += (p.vy + (p.layer * 0.12 + 0.08)) * areaScale;
           if (p.y > height + 20) {
@@ -865,6 +1122,8 @@
           }
           if (p.x < -20) p.x = width + 10;
           if (p.x > width + 20) p.x = -10;
+          p.vx *= 0.995;
+          p.vy *= 0.996;
         } else if (mode === "gather") {
           p.x += (width * 0.5 - p.x) * 0.035;
           p.y += (height * 0.46 - p.y) * 0.035;
@@ -899,7 +1158,7 @@
         }
 
         const hue = p.sparkle ? "255,240,198" : p.layer === 2 ? "255,224,238" : "255,191,219";
-        ctx.fillStyle = `rgba(${hue},${helpers.clamp(alpha, 0.06, 0.4)})`;
+        ctx.fillStyle = `rgba(${hue},${helpers.clamp(alpha, 0.09, 0.55)})`;
         ctx.fill();
       });
 
@@ -1359,6 +1618,10 @@
 
   const revealController = (() => {
     const items = document.querySelectorAll(".reveal");
+    if (!("IntersectionObserver" in window)) {
+      items.forEach((item) => item.classList.add("is-visible"));
+      return;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -1375,6 +1638,26 @@
   })();
 
   const controls = (() => {
+    function applyDockMode(compact) {
+      if (!dom.controlDock) return;
+      dom.controlDock.classList.toggle("is-compact", compact);
+      loveButtonSystem.setLabel(dom.dockSizeToggle, compact ? "Buyut" : "Kucult");
+
+      if (compact) {
+        loveButtonSystem.setLabel(dom.musicToggle, state.audioPlaying ? "❚❚" : "▶");
+      } else {
+        loveButtonSystem.setLabel(dom.musicToggle, state.audioPlaying ? "❚❚ Muzik" : "▶ Muzik");
+      }
+    }
+
+    const initialCompact = window.innerWidth <= 740;
+    applyDockMode(initialCompact);
+
+    dom.dockSizeToggle.addEventListener("click", () => {
+      const compact = !dom.controlDock.classList.contains("is-compact");
+      applyDockMode(compact);
+    });
+
     dom.trailToggle.addEventListener("click", () => {
       state.settings.trailEnabled = !state.settings.trailEnabled;
       fxParticles.setEnabled(state.settings.trailEnabled);
@@ -1395,6 +1678,7 @@
 
   const pointerEmitter = (() => {
     const spawnInterval = reducedMotion ? 90 : (isMobileDevice ? 35 : 24);
+    let pointerIdleTimer = 0;
     const onMove = helpers.throttle((event) => {
       const x = event.clientX ?? (event.touches && event.touches[0]?.clientX);
       const y = event.clientY ?? (event.touches && event.touches[0]?.clientY);
@@ -1402,6 +1686,10 @@
       state.pointers.x = x;
       state.pointers.y = y;
       state.pointers.active = true;
+      if (pointerIdleTimer) window.clearTimeout(pointerIdleTimer);
+      pointerIdleTimer = window.setTimeout(() => {
+        state.pointers.active = false;
+      }, 260);
       foilController.onMove(x, y);
       tiltController.onPointer(x, y);
       if (!state.settings.trailEnabled) return;
@@ -1414,7 +1702,6 @@
     }, spawnInterval);
 
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("mousemove", onMove, { passive: true });
     window.addEventListener("touchmove", onMove, { passive: true });
   })();
 

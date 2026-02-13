@@ -394,9 +394,9 @@ h2 {
 
 .btn-runaway {
   position: absolute;
-  left: 50%;
+  left: 0;
   top: 0;
-  transform: translateX(18px);
+  transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 220ms ease, opacity 160ms ease;
 }
 
 .question-card {
@@ -593,6 +593,33 @@ h2 {
   display: grid;
   gap: 8px;
   border-radius: 20px;
+  transition: width 220ms ease, padding 220ms ease, opacity 180ms ease;
+}
+
+.dock-head {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.control-dock.is-compact {
+  width: min(112px, calc(100vw - 18px));
+  padding: 10px;
+  gap: 6px;
+}
+
+.control-dock.is-compact .range-wrap,
+.control-dock.is-compact .select-wrap,
+.control-dock.is-compact #volumeRange,
+.control-dock.is-compact #densitySelect,
+.control-dock.is-compact #trailToggle,
+.control-dock.is-compact #themeToggle {
+  display: none;
+}
+
+.control-dock.is-compact #musicToggle {
+  min-height: 42px;
+  padding-inline: 10px;
 }
 
 select,
@@ -789,20 +816,17 @@ input[type="range"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  html {
     scroll-behavior: auto !important;
   }
 
   .reveal,
   .section,
   .control-dock {
+    opacity: 1 !important;
     filter: none !important;
     transform: none !important;
+    transition-duration: 120ms !important;
   }
 
   .grain {
@@ -828,11 +852,15 @@ input[type="range"] {
 
 @media (max-width: 740px) {
   .control-dock {
-    width: min(96vw, 360px);
+    width: min(90vw, 320px);
     left: 50%;
     transform: translateX(-50%);
     right: auto;
     bottom: calc(10px + var(--safe-bottom));
+  }
+
+  .control-dock.is-compact {
+    width: min(112px, calc(100vw - 16px));
   }
 
   .thumbs {
